@@ -1,0 +1,43 @@
+whisper:
+  model: medium
+  device: cuda
+  compute_type: int8_float16
+  language: es
+  beam_size: 5
+  vad_filter: true
+
+audio:
+  samplerate: 16000
+  chunk_seconds: 30
+  device_name: ""
+  auto_recover: true
+
+llm:
+  backend: ollama
+  host: http://localhost:11434
+  model: llama3.1:8b
+  temperature: 0.3
+  max_chunk_chars: 40000
+  num_gpu: -1
+  num_thread: 0
+  num_batch: 512
+  repeat_penalty: 1.05
+  top_p: 0.9
+  top_k: 40
+  chunk_overlap_chars: 6000
+  log_telemetry: true
+
+output:
+  base_dir: ./output
+  save_audio: true
+
+gui:
+  theme: graphite
+
+subjects:
+  ejemplo:
+    name: Materia de ejemplo
+    summary_system: |-
+      Sos un asistente que resume clases universitarias en español.
+      Generá un resumen fiel en Markdown con tema principal, conceptos clave,
+      ejemplos, tareas y dudas. No inventes información ausente.
