@@ -45,6 +45,7 @@ class AppLayout(ft.Row):
                 ft.NavigationRailDestination(icon=ft.Icons.LIBRARY_BOOKS_OUTLINED, selected_icon=ft.Icons.LIBRARY_BOOKS, label="Resúmenes"),
                 ft.NavigationRailDestination(icon=ft.Icons.SCHOOL_OUTLINED, selected_icon=ft.Icons.SCHOOL, label="Materias"),
                 ft.NavigationRailDestination(icon=ft.Icons.FOLDER_COPY_OUTLINED, selected_icon=ft.Icons.FOLDER_COPY, label="Contexto"),
+                ft.NavigationRailDestination(icon=ft.Icons.HEALTH_AND_SAFETY_OUTLINED, selected_icon=ft.Icons.HEALTH_AND_SAFETY, label="Preparación"),
                 ft.NavigationRailDestination(icon=ft.Icons.TUNE_OUTLINED, selected_icon=ft.Icons.TUNE, label="Ajustes"),
             ],
             on_change=self.rail_change,
@@ -84,7 +85,11 @@ class AppLayout(ft.Row):
             spacing=0,
         )
         self.controls = [self.rail_panel, self.workspace]
-        self.show_home(update=False)
+        self._setup_view = None
+        if get_config().gui.setup_completed:
+            self.show_home(update=False)
+        else:
+            self.show_setup(update=False, refresh=False)
 
     def apply_palette(self) -> None:
         colors = palette(get_config().gui.theme)
@@ -138,9 +143,25 @@ class AppLayout(ft.Row):
 
     def show_settings(self) -> None:
         settings = SettingsView(self.main_page, self)
-        self._show(settings.view, index=4)
+        self._show(settings.view, index=5)
         settings.load_audio_devices()
         settings.load_models()
+
+    def show_setup(self, *, update: bool = True, refresh: bool = True) -> None:
+        from gui.views.setup import SetupView
+
+        self._setup_view = SetupView(self.main_page, self)
+        if update:
+            self._show(self._setup_view.view, index=4)
+        else:
+            self.rail.selected_index = 4
+            self.content_area.content = self._setup_view.view
+        if refresh:
+            self._setup_view.refresh()
+
+    def refresh_initial_view(self) -> None:
+        if self._setup_view is not None:
+            self._setup_view.refresh()
 
     def show_recording(self, recording) -> None:
         self.active_recording = recording
@@ -217,6 +238,8 @@ class AppLayout(ft.Row):
         elif index == 3:
             self.show_context()
         elif index == 4:
+            self.show_setup()
+        elif index == 5:
             self.show_settings()
 
     def rail_change(self, e) -> None:

@@ -166,8 +166,24 @@ class HomeView:
             padding=18,
         )
 
+        responsive_workspace = ft.ResponsiveRow(
+            [
+                ft.Container(
+                    content=ft.Column([new_class, actions], spacing=16),
+                    col={"xs": 12, "lg": 7},
+                ),
+                ft.Container(
+                    content=recent,
+                    col={"xs": 12, "lg": 5},
+                ),
+            ],
+            columns=12,
+            spacing=16,
+            run_spacing=16,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+        )
         self.view = ft.ListView(
-            [hero, new_class, actions, recent],
+            [hero, responsive_workspace],
             expand=True,
             spacing=16,
             padding=ft.Padding.only(right=10, bottom=12),

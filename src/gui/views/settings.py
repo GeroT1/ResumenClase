@@ -25,6 +25,49 @@ _OLLAMA_MODELS_CACHE: dict[str, list[str]] = {}
 _AUDIO_DEVICES_CACHE: tuple[list[str], str] | None = None
 SYSTEM_DEFAULT_DEVICE = "__windows_default__"
 
+SECTION_HELP = {
+    "Transcripción": (
+        "Modelo Whisper: define el equilibrio entre velocidad, memoria y precisión; "
+        "los modelos más grandes suelen reconocer mejor pero tardan más.\n\n"
+        "Dispositivo: CUDA usa una GPU NVIDIA y CPU funciona sin GPU.\n\n"
+        "Precisión: reduce o aumenta el uso de memoria. int8_float16 suele ser el "
+        "mejor equilibrio para GPU; int8 es útil en CPU.\n\n"
+        "Idioma: fijarlo mejora el reconocimiento; Automático sirve para clases en "
+        "varios idiomas. Beam size prueba más alternativas: puede mejorar el texto, "
+        "pero aumenta el tiempo. VAD descarta silencios para procesar menos audio."
+    ),
+    "Captura de audio": (
+        "Sample rate indica cuántas muestras se guardan por segundo. 16000 Hz alcanza "
+        "para voz y consume menos espacio.\n\n"
+        "Fragmento determina cada cuántos segundos se entrega audio al transcriptor: "
+        "fragmentos cortos actualizan antes; fragmentos largos tienen más contexto.\n\n"
+        "Dispositivo de salida es lo que la aplicación escucha. Predeterminado de "
+        "Windows sigue automáticamente el cambio entre auriculares y parlantes. "
+        "Recuperación automática intenta reconectarse si el dispositivo desaparece."
+    ),
+    "Resumen con IA": (
+        "Servidor Ollama es la dirección donde corre el modelo. localhost mantiene "
+        "las transcripciones en este equipo; un servidor remoto recibe ese contenido.\n\n"
+        "Modelo de resumen elige el modelo instalado en Ollama. Temperatura baja genera "
+        "resultados más consistentes; una alta agrega variación.\n\n"
+        "Caracteres por fragmento controla cuánto transcript entra en cada llamada. "
+        "Subirlo conserva más contexto pero requiere más memoria y ventana de contexto."
+    ),
+    "Archivos e interfaz": (
+        "Carpeta de resultados define dónde se crean las carpetas por materia y año. "
+        "Una ruta relativa se interpreta desde la carpeta del proyecto.\n\n"
+        "Conservar audio original permite volver a transcribir una clase, pero ocupa "
+        "más espacio. Desactivarlo conserva transcripciones y resúmenes.\n\n"
+        "Paleta visual cambia colores, contraste y modo claro u oscuro; no afecta las "
+        "grabaciones ni los modelos."
+    ),
+    "Centro rápido": (
+        "Estos accesos no cambian la configuración por sí solos. Detectar audio "
+        "actualiza la lista de salidas de Windows y Consultar Ollama vuelve a leer "
+        "los modelos instalados. Materias y Contexto abren sus vistas de administración."
+    ),
+}
+
 
 class SettingsView:
     def __init__(self, page: ft.Page, app_layout):
@@ -113,33 +156,112 @@ class SettingsView:
             width=240,
         )
 
-        scroll_content = ft.ListView(
+        transcription_card = self._card(
+            "Transcripción", "Modelo y calidad de reconocimiento", ft.Icons.GRAPHIC_EQ,
             [
-                self._card("Transcripción", "Modelo y calidad de reconocimiento", ft.Icons.GRAPHIC_EQ, [
-                    ft.Row([self.whisper_model, self.whisper_device, self.compute_type, self.language], wrap=True),
-                    ft.Row([self.beam_size, self.vad_filter], wrap=True),
-                ], colors.card, colors.accent),
-                self._card("Captura de audio", "Origen y tamaño de los fragmentos", ft.Icons.HEADPHONES, [
-                    ft.Row([self.samplerate, self.chunk_seconds, self.device_name, self.refresh_audio_button], wrap=True),
-                    self.audio_device_status,
-                    self.auto_recover,
-                ], colors.card, colors.accent2),
-                self._card("Resumen con IA", "Conexión y modelo de Ollama", ft.Icons.AUTO_AWESOME, [
-                    ft.Row([self.llm_host, self.llm_model, self.refresh_models_button, self.temperature, self.max_chunk_chars], wrap=True),
-                    self.model_status,
-                ], colors.card, colors.accent3),
-                self._card("Archivos e interfaz", "Ubicación de datos y apariencia", ft.Icons.PALETTE_OUTLINED, [
-                    ft.Row([self.output_dir, self.save_audio, self.theme], wrap=True),
-                    ft.Text(
-                        "Los resultados se guardan como output/<materia>/<año>/audio, transcripts y summaries.",
-                        size=12,
-                        color=colors.muted,
-                    ),
-                ], colors.card, colors.warning),
+                ft.Row([self.whisper_model, self.whisper_device, self.compute_type, self.language], wrap=True),
+                ft.Row([self.beam_size, self.vad_filter], wrap=True),
             ],
-            expand=True,
+            colors.card, colors.accent, SECTION_HELP["Transcripción"],
+        )
+        audio_card = self._card(
+            "Captura de audio", "Origen y tamaño de los fragmentos", ft.Icons.HEADPHONES,
+            [
+                ft.Row([self.samplerate, self.chunk_seconds, self.device_name, self.refresh_audio_button], wrap=True),
+                self.audio_device_status,
+                self.auto_recover,
+            ],
+            colors.card, colors.accent2, SECTION_HELP["Captura de audio"],
+        )
+        summary_card = self._card(
+            "Resumen con IA", "Conexión y modelo de Ollama", ft.Icons.AUTO_AWESOME,
+            [
+                ft.Row([self.llm_host, self.llm_model, self.refresh_models_button, self.temperature, self.max_chunk_chars], wrap=True),
+                self.model_status,
+            ],
+            colors.card, colors.accent3, SECTION_HELP["Resumen con IA"],
+        )
+        files_card = self._card(
+            "Archivos e interfaz", "Ubicación de datos y apariencia", ft.Icons.PALETTE_OUTLINED,
+            [
+                ft.Row([self.output_dir, self.save_audio, self.theme], wrap=True),
+                ft.Text(
+                    "Los resultados se guardan como output/<materia>/<año>/audio, transcripts y summaries.",
+                    size=12,
+                    color=colors.muted,
+                ),
+            ],
+            colors.card, colors.warning, SECTION_HELP["Archivos e interfaz"],
+        )
+        self.quick_tools = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Row([
+                        ft.Icon(ft.Icons.DASHBOARD_CUSTOMIZE_OUTLINED, color=colors.accent),
+                        ft.Text("Centro rápido", size=18, weight=ft.FontWeight.W_600, expand=True),
+                        ft.IconButton(
+                            icon=ft.Icons.HELP_OUTLINE,
+                            tooltip="¿Qué significa Centro rápido?",
+                            on_click=lambda _e: self._show_help(
+                                "Centro rápido", SECTION_HELP["Centro rápido"]
+                            ),
+                        ),
+                    ]),
+                    ft.Text(
+                        "Comprobaciones y accesos frecuentes sin salir de Ajustes.",
+                        color=colors.muted,
+                        size=12,
+                    ),
+                    ft.Row([
+                        ft.OutlinedButton(
+                            content=ft.Text("Detectar audio"),
+                            icon=ft.Icons.HEADPHONES,
+                            on_click=lambda _e: self.load_audio_devices(force=True),
+                        ),
+                        ft.OutlinedButton(
+                            content=ft.Text("Consultar Ollama"),
+                            icon=ft.Icons.MEMORY,
+                            on_click=lambda _e: self.load_models(force=True),
+                        ),
+                        ft.TextButton(
+                            content=ft.Text("Materias"),
+                            icon=ft.Icons.SCHOOL_OUTLINED,
+                            on_click=lambda _e: self.app_layout.show_subjects(),
+                        ),
+                        ft.TextButton(
+                            content=ft.Text("Contexto"),
+                            icon=ft.Icons.FOLDER_COPY_OUTLINED,
+                            on_click=lambda _e: self.app_layout.show_context(),
+                        ),
+                    ], wrap=True, spacing=8),
+                ],
+                spacing=8,
+            ),
+            bgcolor=colors.surface_high,
+            border=ft.Border(left=ft.BorderSide(4, colors.accent)),
+            border_radius=12,
+            padding=16,
+        )
+        self.settings_workspace = ft.ResponsiveRow(
+            [
+                ft.Container(
+                    ft.Column([transcription_card, audio_card], spacing=14),
+                    col={"xs": 12, "lg": 6},
+                ),
+                ft.Container(
+                    ft.Column([summary_card, files_card, self.quick_tools], spacing=14),
+                    col={"xs": 12, "lg": 6},
+                ),
+            ],
+            columns=12,
             spacing=14,
-            padding=ft.Padding.only(right=12, bottom=12),
+            run_spacing=14,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+        )
+        scroll_content = ft.ListView(
+            [self.settings_workspace],
+            expand=True,
+            padding=ft.Padding.only(right=8, bottom=8),
         )
         footer = ft.Container(
             content=ft.Row(
@@ -174,7 +296,13 @@ class SettingsView:
                     padding=ft.Padding.only(bottom=16),
                 ),
                 recording_notice,
-                ft.Container(scroll_content, expand=True),
+                ft.Container(
+                    scroll_content,
+                    expand=True,
+                    bgcolor=colors.canvas,
+                    border_radius=12,
+                    padding=10,
+                ),
                 footer,
             ],
             expand=True,
@@ -193,14 +321,24 @@ class SettingsView:
             width=width,
         )
 
-    @staticmethod
-    def _card(title, subtitle, icon, controls, bgcolor, accent):
+    def _card(self, title, subtitle, icon, controls, bgcolor, accent, help_text):
         return ft.Card(
             bgcolor=bgcolor,
             elevation=0,
             content=ft.Container(
                 ft.Column([
-                    ft.Row([ft.Icon(icon), ft.Column([ft.Text(title, size=18, weight=ft.FontWeight.W_600), ft.Text(subtitle, size=12)])]),
+                    ft.Row([
+                        ft.Icon(icon),
+                        ft.Column([
+                            ft.Text(title, size=18, weight=ft.FontWeight.W_600),
+                            ft.Text(subtitle, size=12),
+                        ], expand=True),
+                        ft.IconButton(
+                            icon=ft.Icons.HELP_OUTLINE,
+                            tooltip=f"¿Qué significa {title}?",
+                            on_click=lambda _e, heading=title, text=help_text: self._show_help(heading, text),
+                        ),
+                    ]),
                     ft.Divider(),
                     *controls,
                 ], spacing=12),
@@ -209,6 +347,25 @@ class SettingsView:
                 border_radius=12,
             ),
         )
+
+    def _show_help(self, title: str, text: str) -> None:
+        self.main_page.show_dialog(ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.HELP_OUTLINE),
+                ft.Text(title, weight=ft.FontWeight.W_600),
+            ]),
+            content=ft.Container(
+                ft.Text(text, selectable=True),
+                width=560,
+            ),
+            actions=[
+                ft.FilledButton(
+                    content=ft.Text("Entendido"),
+                    on_click=lambda _e: self.main_page.pop_dialog(),
+                )
+            ],
+        ))
 
     def load_models(self, force: bool = False) -> None:
         host = (self.llm_host.value or "").strip().rstrip("/")

@@ -1,6 +1,7 @@
 # ResumenClase
 
-Transcribe + resume clases virtuales (Meet) con IA 100% local. RTX 3070+ recomendado.
+Transcribe y resume clases virtuales (Meet). Whisper y Ollama trabajan localmente;
+Claude es opcional y sólo se usa para describir imágenes del material fijo.
 
 ## Stack
 - **faster-whisper** (CTranslate2) — transcripción GPU, int8_float16 ~2GB VRAM con `large-v3`
@@ -11,6 +12,14 @@ Transcribe + resume clases virtuales (Meet) con IA 100% local. RTX 3070+ recomen
 VRAM total 3070 (8GB) no alcanza para Whisper + LLM simultáneos. El programa **libera Whisper antes de cargar LLM** vía context manager + `torch.cuda.empty_cache()`.
 
 ## Setup
+
+### Ejecutable de Windows
+
+Descomprimí el ZIP completo y ejecutá `ResumenClase.exe` sin separarlo de la carpeta
+`_internal`. La primera pantalla **Preparación** comprueba Whisper, GPU/CUDA, FFmpeg,
+Ollama y Claude. Nada se descarga automáticamente: cada acción requiere un clic y
+avisa cuando puede ocupar varios GB. La configuración distribuida usa CPU + `int8`;
+la GPU sólo se habilita cuando también están disponibles las bibliotecas CUDA.
 
 ### 1. Deps sistema
 - **Python 3.13**
@@ -117,10 +126,12 @@ para evitar publicar datos académicos o configuración personal.
 
 La aplicación usa Ollama en `localhost` de manera predeterminada. Configurar un
 host remoto envía allí las transcripciones. MarkItDown convierte documentos al
-importarlos desde la vista Contexto; para agregar descripciones de imágenes con Claude definí
-`RESUMEN_CLASE_ENABLE_CLAUDE=1` y `ANTHROPIC_API_KEY`. Podés cambiar el modelo
-con `RESUMEN_CLASE_CLAUDE_MODEL` (por defecto `claude-sonnet-4-6`). Al habilitarlo,
-las imágenes procesadas pueden enviarse a Anthropic; consultá [SECURITY.md](SECURITY.md).
+importarlos desde la vista Contexto. Para agregar descripciones de imágenes con Claude,
+guardá la API key desde **Preparación**: queda en el Administrador de credenciales de
+Windows. También se admite `RESUMEN_CLASE_ENABLE_CLAUDE=1` junto con
+`ANTHROPIC_API_KEY`. Podés cambiar el modelo con `RESUMEN_CLASE_CLAUDE_MODEL`
+(por defecto `claude-sonnet-4-6`). Al habilitarlo, las imágenes procesadas pueden
+enviarse a Anthropic; consultá [SECURITY.md](SECURITY.md).
 
 Tips de eficiencia:
 - `whisper.model`: `medium` es ~2x más rápido que `large-v3` con calidad aceptable en español

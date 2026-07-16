@@ -76,6 +76,7 @@ class OutputCfg:
 @dataclass(slots=True)
 class GuiCfg:
     theme: str = "midnight"
+    setup_completed: bool = False
 
 
 @dataclass(slots=True)

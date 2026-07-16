@@ -48,11 +48,24 @@ _md_instance = None
 _md_load_attempted = False
 
 
+def reset_markitdown() -> None:
+    """Fuerza a aplicar cambios de credenciales en la próxima conversión."""
+    global _md_instance, _md_load_attempted
+    _md_instance = None
+    _md_load_attempted = False
+
+
 def _build_claude_client():
-    """Crea el cliente compatible de Claude sólo con opt-in explícito."""
-    if os.environ.get("RESUMEN_CLASE_ENABLE_CLAUDE", "").strip() != "1":
+    """Crea Claude con opt-in por entorno o una clave guardada por la GUI."""
+    from .secrets import get_anthropic_api_key, stored_anthropic_api_key
+
+    stored_key = stored_anthropic_api_key()
+    if (
+        os.environ.get("RESUMEN_CLASE_ENABLE_CLAUDE", "").strip() != "1"
+        and not stored_key
+    ):
         return None, None
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = get_anthropic_api_key()
     if not api_key:
         log.warning(
             "Claude habilitado pero falta ANTHROPIC_API_KEY — MarkItDown seguirá local"
