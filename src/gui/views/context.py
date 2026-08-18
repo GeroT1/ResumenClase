@@ -51,6 +51,15 @@ class ContextView:
             "Elegí una materia para ver su material fijo.",
             color=colors.muted,
             size=12,
+            selectable=True,
+            expand=True,
+        )
+        self.copy_status_button = ft.IconButton(
+            icon=ft.Icons.COPY_ALL,
+            icon_size=16,
+            tooltip="Copiar mensaje al portapapeles",
+            visible=False,
+            on_click=lambda _e: self._copy_status(),
         )
         self.file_list = ft.ListView(expand=True, spacing=6)
 
@@ -100,7 +109,11 @@ class ContextView:
                                         size=20,
                                         weight=ft.FontWeight.W_600,
                                     ),
-                                    self.status,
+                                    ft.Row(
+                                        [self.status, self.copy_status_button],
+                                        alignment=ft.MainAxisAlignment.START,
+                                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                    ),
                                 ],
                                 spacing=2,
                                 expand=True,
@@ -220,6 +233,14 @@ class ContextView:
         )
         self._finish_conversion(converted, failed)
 
+    def _copy_status(self) -> None:
+        try:
+            if self.status.value:
+                self.main_page.set_clipboard(self.status.value)
+                notify(self.main_page, "Mensaje copiado al portapapeles.")
+        except Exception:
+            pass
+
     def _finish_conversion(
         self,
         converted: list[Path],
@@ -236,12 +257,15 @@ class ContextView:
                 f"Se convirtieron {len(converted)}; fallaron {len(failed)}. "
                 f"{first_path.name}: {first_error}"
             )
+            self.copy_status_button.visible = True
             notify(self.main_page, self.status.value, error=True)
         elif converted:
             self.status.value = f"Se convirtieron {len(converted)} archivo(s) correctamente."
+            self.copy_status_button.visible = False
             notify(self.main_page, self.status.value)
         else:
             self.status.value = "No había archivos pendientes de conversión."
+            self.copy_status_button.visible = False
             notify(self.main_page, self.status.value)
         self._safe_update()
 
@@ -252,6 +276,7 @@ class ContextView:
         self.progress.visible = True
         self.subject.disabled = True
         self._set_buttons_disabled(True)
+        self.copy_status_button.visible = False
         self.status.value = message
         self._safe_update()
         return True

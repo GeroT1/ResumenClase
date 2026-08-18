@@ -101,15 +101,48 @@ def _markitdown():
                 "(RESUMEN_CLASE_ENABLE_CLAUDE=1 para habilitar Claude)"
             )
     except Exception as e:
-        log.warning("markitdown no disponible (%s) — solo se aceptarán .md/.txt", e)
+        log.warning("markitdown no disponible (%s: %s) — usando extractores directos de respaldo", type(e).__name__, e)
         _md_instance = None
     return _md_instance
+
+
+def _extract_pdf_fallback(path: Path) -> str:
+    """Extrae texto de un archivo PDF si MarkItDown no está disponible o falla."""
+    errors: list[str] = []
+    # 1. Intentar con pdfminer
+    try:
+        from pdfminer.high_level import extract_text as pdfminer_extract
+        text = pdfminer_extract(str(path))
+        if text is not None:
+            return text.strip()
+    except Exception as e:
+        errors.append(f"pdfminer: {e}")
+        log.warning("pdfminer falló al leer %s: %s", path.name, e)
+
+    # 2. Intentar con pypdfium2
+    try:
+        import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument(str(path))
+        pages_text = []
+        for page in pdf:
+            text_page = page.get_textpage()
+            pages_text.append(text_page.get_text_range())
+        full_text = "\n\n".join(t for t in pages_text if t.strip())
+        return full_text.strip()
+    except Exception as e:
+        errors.append(f"pypdfium2: {e}")
+        log.warning("pypdfium2 falló al leer %s: %s", path.name, e)
+
+    raise RuntimeError(f"No se pudo extraer texto del PDF '{path.name}'. Errores: {'; '.join(errors)}")
 
 
 def supported_extensions() -> set[str]:
     exts = set(_PLAIN_EXTS)
     if _markitdown() is not None:
         exts |= _MARKITDOWN_EXTS
+    else:
+        # Aunque MarkItDown no esté, soportamos PDF vía fallback directo
+        exts.add(".pdf")
     return exts
 
 
@@ -127,15 +160,26 @@ def extract_text(path: Path) -> str:
     ext = path.suffix.lower()
     if ext in _PLAIN_EXTS:
         return path.read_text(encoding="utf-8", errors="replace")
+    if ext not in _MARKITDOWN_EXTS:
+        raise RuntimeError(f"Extensión no soportada: {ext}")
+
     md = _markitdown()
+    if md is not None:
+        try:
+            result = md.convert(str(path))
+            if result.text_content and result.text_content.strip():
+                return result.text_content
+        except Exception as exc:
+            log.warning("MarkItDown falló convirtiendo %s (%s). Intentando extractor de respaldo...", path.name, exc)
+
+    if ext == ".pdf":
+        return _extract_pdf_fallback(path)
+
     if md is None:
         raise RuntimeError(
             f"No puedo leer {path.name}: instalá markitdown o convertí a .md/.txt"
         )
-    if ext not in _MARKITDOWN_EXTS:
-        raise RuntimeError(f"Extensión no soportada: {ext}")
-    result = md.convert(str(path))
-    return result.text_content or ""
+    raise RuntimeError(f"No se pudo convertir '{path.name}' a texto.")
 
 
 def subject_reference_dir(config_path: Path, subject_key: str) -> Path:

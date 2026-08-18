@@ -10,6 +10,16 @@ from gui.theme import palette
 from gui.views.home import HomeView
 from gui.views.settings import SettingsView
 from gui.views.summaries import SummariesView
+from resumen_clase.system_setup import SetupStatus, is_setup_needed
+
+DESTINATIONS: list[tuple[str, str, str, str]] = [
+    ("home", ft.Icons.HOME_OUTLINED, ft.Icons.HOME, "Inicio"),
+    ("summaries", ft.Icons.LIBRARY_BOOKS_OUTLINED, ft.Icons.LIBRARY_BOOKS, "Resúmenes"),
+    ("subjects", ft.Icons.SCHOOL_OUTLINED, ft.Icons.SCHOOL, "Materias"),
+    ("context", ft.Icons.FOLDER_COPY_OUTLINED, ft.Icons.FOLDER_COPY, "Contexto"),
+    ("setup", ft.Icons.HEALTH_AND_SAFETY_OUTLINED, ft.Icons.HEALTH_AND_SAFETY, "Preparación"),
+    ("settings", ft.Icons.TUNE_OUTLINED, ft.Icons.TUNE, "Ajustes"),
+]
 
 
 class AppLayout(ft.Row):
@@ -18,8 +28,14 @@ class AppLayout(ft.Row):
         self.main_page = page
         self.active_recording = None
         self._queued_after_recording: list[Callable[[], None]] = []
-        colors = palette(get_config().gui.theme)
+        cfg = get_config()
+        colors = palette(cfg.gui.theme)
         self.bgcolor = colors.canvas
+
+        self.show_setup_in_rail = is_setup_needed(cfg)
+        self._current_view_key: str = "setup" if self.show_setup_in_rail else "home"
+        self._rail_keys: list[str] = []
+
         self.rail = ft.NavigationRail(
             selected_index=0,
             label_type=ft.NavigationRailLabelType.ALL,
@@ -40,16 +56,11 @@ class AppLayout(ft.Row):
                 ),
                 padding=ft.Padding.only(top=18, bottom=22),
             ),
-            destinations=[
-                ft.NavigationRailDestination(icon=ft.Icons.HOME_OUTLINED, selected_icon=ft.Icons.HOME, label="Inicio"),
-                ft.NavigationRailDestination(icon=ft.Icons.LIBRARY_BOOKS_OUTLINED, selected_icon=ft.Icons.LIBRARY_BOOKS, label="Resúmenes"),
-                ft.NavigationRailDestination(icon=ft.Icons.SCHOOL_OUTLINED, selected_icon=ft.Icons.SCHOOL, label="Materias"),
-                ft.NavigationRailDestination(icon=ft.Icons.FOLDER_COPY_OUTLINED, selected_icon=ft.Icons.FOLDER_COPY, label="Contexto"),
-                ft.NavigationRailDestination(icon=ft.Icons.HEALTH_AND_SAFETY_OUTLINED, selected_icon=ft.Icons.HEALTH_AND_SAFETY, label="Preparación"),
-                ft.NavigationRailDestination(icon=ft.Icons.TUNE_OUTLINED, selected_icon=ft.Icons.TUNE, label="Ajustes"),
-            ],
+            destinations=[],
             on_change=self.rail_change,
         )
+        self.rebuild_rail()
+
         self.rail_panel = ft.Container(
             content=self.rail,
             bgcolor=colors.rail,
@@ -86,10 +97,36 @@ class AppLayout(ft.Row):
         )
         self.controls = [self.rail_panel, self.workspace]
         self._setup_view = None
-        if get_config().gui.setup_completed:
-            self.show_home(update=False)
-        else:
+
+        if self.show_setup_in_rail:
             self.show_setup(update=False, refresh=False)
+        else:
+            self.show_home(update=False)
+
+    def _active_destinations(self) -> list[tuple[str, str, str, str]]:
+        return [
+            item for item in DESTINATIONS
+            if item[0] != "setup" or self.show_setup_in_rail
+        ]
+
+    def rebuild_rail(self) -> None:
+        dest_data = self._active_destinations()
+        self._rail_keys = [item[0] for item in dest_data]
+        self.rail.destinations = [
+            ft.NavigationRailDestination(icon=icon, selected_icon=sel_icon, label=label)
+            for _, icon, sel_icon, label in dest_data
+        ]
+        if self._current_view_key in self._rail_keys:
+            self.rail.selected_index = self._rail_keys.index(self._current_view_key)
+        else:
+            self.rail.selected_index = None
+
+    def update_setup_rail_visibility(self, status: SetupStatus | None = None) -> None:
+        needed = is_setup_needed(get_config(), status)
+        if needed != self.show_setup_in_rail:
+            self.show_setup_in_rail = needed
+            self.rebuild_rail()
+            self._safe_update()
 
     def apply_palette(self) -> None:
         colors = palette(get_config().gui.theme)
@@ -115,47 +152,50 @@ class AppLayout(ft.Row):
         except (RuntimeError, AssertionError):
             pass
 
-    def _show(self, control: ft.Control, *, index: int) -> None:
+    def _show_by_key(self, key: str, control: ft.Control, *, update: bool = True) -> None:
         self.rail.disabled = False
-        self.rail.selected_index = index
+        self._current_view_key = key
+        if key in self._rail_keys:
+            self.rail.selected_index = self._rail_keys.index(key)
+        else:
+            self.rail.selected_index = None
         self.content_area.content = control
-        self._safe_update()
-
-    def show_home(self, *, update: bool = True) -> None:
-        self.rail.disabled = False
-        self.rail.selected_index = 0
-        self.content_area.content = HomeView(self.main_page, self).view
         if update:
             self._safe_update()
 
+    def show_home(self, *, update: bool = True) -> None:
+        self._show_by_key("home", HomeView(self.main_page, self).view, update=update)
+
     def show_summaries(self, selected_file: Path | None = None) -> None:
-        self._show(SummariesView(self.main_page, self, selected_file).view, index=1)
+        self._show_by_key("summaries", SummariesView(self.main_page, self, selected_file).view)
 
     def show_subjects(self) -> None:
         from gui.views.subjects import SubjectsView
 
-        self._show(SubjectsView(self.main_page, self).view, index=2)
+        self._show_by_key("subjects", SubjectsView(self.main_page, self).view)
 
     def show_context(self) -> None:
         from gui.views.context import ContextView
 
-        self._show(ContextView(self.main_page, self).view, index=3)
+        self._show_by_key("context", ContextView(self.main_page, self).view)
 
     def show_settings(self) -> None:
         settings = SettingsView(self.main_page, self)
-        self._show(settings.view, index=5)
+        self._show_by_key("settings", settings.view)
         settings.load_audio_devices()
         settings.load_models()
 
-    def show_setup(self, *, update: bool = True, refresh: bool = True) -> None:
+    def show_setup(
+        self,
+        *,
+        update: bool = True,
+        refresh: bool = True,
+        from_settings: bool = False,
+    ) -> None:
         from gui.views.setup import SetupView
 
-        self._setup_view = SetupView(self.main_page, self)
-        if update:
-            self._show(self._setup_view.view, index=4)
-        else:
-            self.rail.selected_index = 4
-            self.content_area.content = self._setup_view.view
+        self._setup_view = SetupView(self.main_page, self, from_settings=from_settings)
+        self._show_by_key("setup", self._setup_view.view, update=update)
         if refresh:
             self._setup_view.refresh()
 
@@ -169,17 +209,12 @@ class AppLayout(ft.Row):
         self.recording_banner_text.value = f"Grabando: {recording.stem}"
         self.recording_banner_status.value = "Preparando captura..."
         self.recording_banner_elapsed.value = "00:00"
-        self.rail.disabled = False
-        self.rail.selected_index = 0
-        self.content_area.content = recording.view
-        self._safe_update()
+        self._show_by_key("home", recording.view)
 
     def show_active_recording(self) -> None:
         if self.active_recording is None:
             return
-        self.rail.selected_index = 0
-        self.content_area.content = self.active_recording.view
-        self._safe_update()
+        self._show_by_key("home", self.active_recording.view)
 
     def update_recording_banner(
         self,
@@ -226,21 +261,22 @@ class AppLayout(ft.Row):
             callback()
 
     def show_combine(self, control: ft.Control) -> None:
-        self._show(control, index=0)
-
-    def set_view_by_index(self, index: int) -> None:
-        if index == 0:
-            self.show_home()
-        elif index == 1:
-            self.show_summaries()
-        elif index == 2:
-            self.show_subjects()
-        elif index == 3:
-            self.show_context()
-        elif index == 4:
-            self.show_setup()
-        elif index == 5:
-            self.show_settings()
+        self._show_by_key("home", control)
 
     def rail_change(self, e) -> None:
-        self.set_view_by_index(e.control.selected_index or 0)
+        idx = e.control.selected_index
+        if idx is not None and 0 <= idx < len(self._rail_keys):
+            key = self._rail_keys[idx]
+            if key == "home":
+                self.show_home()
+            elif key == "summaries":
+                self.show_summaries()
+            elif key == "subjects":
+                self.show_subjects()
+            elif key == "context":
+                self.show_context()
+            elif key == "setup":
+                self.show_setup()
+            elif key == "settings":
+                self.show_settings()
+

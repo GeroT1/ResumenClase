@@ -214,6 +214,11 @@ class SettingsView:
                     ),
                     ft.Row([
                         ft.OutlinedButton(
+                            content=ft.Text("Preparación del sistema"),
+                            icon=ft.Icons.HEALTH_AND_SAFETY,
+                            on_click=lambda _e: self.app_layout.show_setup(from_settings=True),
+                        ),
+                        ft.OutlinedButton(
                             content=ft.Text("Detectar audio"),
                             icon=ft.Icons.HEADPHONES,
                             on_click=lambda _e: self.load_audio_devices(force=True),

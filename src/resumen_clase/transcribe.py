@@ -17,24 +17,42 @@ def _setup_cuda_dlls() -> None:
     if sys.platform != "win32":
         return
     search = list(sys.path)
+    if hasattr(sys, "_MEIPASS"):
+        search.append(sys._MEIPASS)
+        search.append(str(Path(sys._MEIPASS) / "_internal"))
+    if sys.executable:
+        exe_parent = Path(sys.executable).parent
+        search.append(str(exe_parent))
+        search.append(str(exe_parent / "_internal"))
     try:
         search += site.getsitepackages()
     except Exception:
         pass
     dirs: list[str] = []
     for sp in search:
-        nvidia_dir = Path(sp) / "nvidia"
-        if not nvidia_dir.is_dir():
+        if not sp:
             continue
-        for pkg in nvidia_dir.iterdir():
-            bin_dir = pkg / "bin"
-            if bin_dir.is_dir():
-                d = str(bin_dir)
+        p = Path(sp)
+        if p.is_dir():
+            d = str(p)
+            if d not in dirs:
                 dirs.append(d)
                 try:
                     os.add_dll_directory(d)
                 except Exception:
                     pass
+        nvidia_dir = p / "nvidia"
+        if nvidia_dir.is_dir():
+            for pkg in nvidia_dir.iterdir():
+                bin_dir = pkg / "bin"
+                if bin_dir.is_dir():
+                    d = str(bin_dir)
+                    if d not in dirs:
+                        dirs.append(d)
+                        try:
+                            os.add_dll_directory(d)
+                        except Exception:
+                            pass
     if dirs:
         os.environ["PATH"] = ";".join(dirs) + ";" + os.environ.get("PATH", "")
 
@@ -55,15 +73,31 @@ from .config import WhisperCfg  # noqa: E402
 
 @contextmanager
 def load_whisper(cfg: WhisperCfg) -> Iterator[WhisperModel]:
-    model = WhisperModel(
-        cfg.model,
-        device=cfg.device,
-        compute_type=cfg.compute_type,
-    )
+    model = None
+    try:
+        model = WhisperModel(
+            cfg.model,
+            device=cfg.device,
+            compute_type=cfg.compute_type,
+        )
+    except Exception as exc:
+        if cfg.device == "cuda":
+            import logging
+            logging.getLogger(__name__).warning(
+                "Falló la inicialización de Whisper en CUDA (%s). Cambiando automáticamente a CPU (int8)...", exc
+            )
+            model = WhisperModel(
+                cfg.model,
+                device="cpu",
+                compute_type="int8",
+            )
+        else:
+            raise
     try:
         yield model
     finally:
-        del model
+        if model is not None:
+            del model
         gc.collect()
         try:
             import torch

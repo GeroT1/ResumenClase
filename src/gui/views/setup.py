@@ -17,9 +17,10 @@ from resumen_clase.system_setup import SetupStatus, diagnose, find_executable
 class SetupView:
     """Asistente revisitable. Sólo diagnostica hasta que el usuario pulsa una acción."""
 
-    def __init__(self, page: ft.Page, app_layout):
+    def __init__(self, page: ft.Page, app_layout, *, from_settings: bool = False):
         self.main_page = page
         self.app_layout = app_layout
+        self.from_settings = from_settings
         self.cfg = get_config()
         colors = palette(self.cfg.gui.theme)
         self.colors = colors
@@ -98,36 +99,68 @@ class SetupView:
             self.gpu_icon, self.gpu_status, [self.gpu_button], colors.success,
         )
 
+        header_controls: list[ft.Control] = []
+        if self.from_settings:
+            header_controls.append(
+                ft.IconButton(
+                    icon=ft.Icons.ARROW_BACK,
+                    tooltip="Volver a Ajustes",
+                    on_click=lambda _e: self.app_layout.show_settings(),
+                )
+            )
+        header_controls.append(
+            ft.Column([
+                ft.Text("Preparación del sistema", size=28, weight=ft.FontWeight.W_600),
+                ft.Text("Comprobá qué está listo y completá sólo lo que necesitás.", color=colors.muted),
+            ], expand=True, spacing=3)
+        )
+        header_controls.append(self.refresh_button)
+
+        continue_label = "Continuar a Ajustes" if self.from_settings else "Continuar a Inicio"
+        scroll_content = ft.ListView(
+            [
+                ft.ResponsiveRow([
+                    ft.Container(ft.Column([whisper_card, gpu_card], spacing=14), col={"xs": 12, "lg": 6}),
+                    ft.Container(ft.Column([ollama_card, ffmpeg_card, claude_card], spacing=14), col={"xs": 12, "lg": 6}),
+                ], columns=12, spacing=14, run_spacing=14),
+                ft.Container(
+                    ft.Row(
+                        [
+                            ft.Icon(ft.Icons.PRIVACY_TIP_OUTLINED, color=colors.accent2),
+                            ft.Text(
+                                "Nada se instala ni se descarga automáticamente. Claude es opcional; grabar WAV no requiere FFmpeg.",
+                                expand=True,
+                            ),
+                            ft.FilledButton(
+                                content=ft.Text(continue_label),
+                                icon=ft.Icons.ARROW_FORWARD,
+                                on_click=self._complete,
+                            ),
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=12,
+                    ),
+                    bgcolor=colors.surface_high,
+                    border_radius=12,
+                    padding=16,
+                ),
+            ],
+            expand=True,
+            spacing=14,
+            padding=ft.Padding.only(right=8, bottom=8),
+        )
+
         self.view = ft.Column(
             [
-                ft.Row([
-                    ft.Column([
-                        ft.Text("Preparación del sistema", size=28, weight=ft.FontWeight.W_600),
-                        ft.Text("Comprobá qué está listo y completá sólo lo que necesitás.", color=colors.muted),
-                    ], expand=True, spacing=3),
-                    self.refresh_button,
-                ]),
+                ft.Row(header_controls),
                 self.progress,
-                ft.Container(
-                    ft.ListView([
-                        ft.ResponsiveRow([
-                            ft.Container(ft.Column([whisper_card, gpu_card], spacing=14), col={"xs": 12, "lg": 6}),
-                            ft.Container(ft.Column([ollama_card, ffmpeg_card, claude_card], spacing=14), col={"xs": 12, "lg": 6}),
-                        ], columns=12, spacing=14, run_spacing=14),
-                        ft.Container(
-                            ft.Row([
-                                ft.Icon(ft.Icons.PRIVACY_TIP_OUTLINED, color=colors.accent2),
-                                ft.Text("Nada se instala ni se descarga automáticamente. Claude es opcional; grabar WAV no requiere FFmpeg.", expand=True),
-                                ft.FilledButton(content=ft.Text("Continuar a Inicio"), icon=ft.Icons.ARROW_FORWARD,
-                                                on_click=self._complete),
-                            ], wrap=True),
-                            bgcolor=colors.surface_high, border_radius=12, padding=16,
-                        ),
-                    ], expand=True, spacing=14, padding=ft.Padding.only(right=8, bottom=8)),
-                    expand=True, bgcolor=colors.canvas, border_radius=12, padding=10,
-                ),
-            ], expand=True, spacing=12,
+                ft.Container(scroll_content, expand=True),
+            ],
+            expand=True,
+            spacing=12,
         )
+
 
     def _status(self, message: str):
         return ft.Icon(ft.Icons.HOURGLASS_TOP, color=self.colors.muted), ft.Text(message, expand=True)
@@ -185,6 +218,7 @@ class SetupView:
         self.gpu_button.disabled = not status.cuda_runtime_ready
         self.start_ollama_button.disabled = not status.ollama_path or status.ollama_running
         self.pull_model_button.disabled = not status.ollama_running or model_ready
+        self.app_layout.update_setup_rail_visibility(status=status)
         self._safe_update()
 
     def _set_status(self, icon, text, ready: bool, message: str, optional: bool = False) -> None:
@@ -336,6 +370,11 @@ class SetupView:
             data = read_config_data()
             data.setdefault("gui", {})["setup_completed"] = True
             write_config_data(data)
-            self.app_layout.show_home()
+            self.app_layout.update_setup_rail_visibility()
+            if self.from_settings:
+                self.app_layout.show_settings()
+            else:
+                self.app_layout.show_home()
         except Exception as exc:
             notify(self.main_page, f"No se pudo completar la preparación: {exc}", error=True)
+

@@ -137,8 +137,14 @@ class RecordingView:
                 self.elapsed_text.update()
             await asyncio.sleep(1)
 
-    def _on_chunk(self, text: str, _offset: float) -> None:
+    def _on_chunk(self, text: str, offset: float) -> None:
+        mm, ss = divmod(int(offset), 60)
         if not text:
+            if not self._chunks:
+                self.last_chunk_text.value = f"[{mm:02d}:{ss:02d}] Sin voz detectada (silencio o pausa)"
+                self.last_chunk_text.italic = True
+                self.last_chunk_text.color = ft.Colors.GREY_500
+                self._safe_update()
             return
         self._chunks.append(text)
         self.last_chunk_text.value = text

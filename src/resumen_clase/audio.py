@@ -112,9 +112,10 @@ class LoopbackRecorder:
             self._paused.clear()
 
     def _record_session(self, wav: sf.SoundFile, buf: list[np.ndarray], acc: int, frames_per_chunk: int) -> tuple[list[np.ndarray], int]:
-        """Abre el device y graba hasta que se invalida o se pide stop.
+        """Abre el device y graba hasta que se invalida, se pide stop o cambia el dispositivo predeterminado de Windows.
         Devuelve (buf, acc) para que el caller pueda continuar si reintenta."""
         mic = pick_loopback(self.cfg.device_name, on_warning=self._warn)
+        active_spk_id = str(mic.name)
         with mic.recorder(samplerate=self.cfg.samplerate, channels=self.cfg.channels) as rec:
             while not self._stop.is_set():
                 data = rec.record(numframes=self.cfg.samplerate)
@@ -123,6 +124,10 @@ class LoopbackRecorder:
                 if self.cfg.channels == 1 and data.ndim > 1:
                     data = data.mean(axis=1, keepdims=True)
                 wav.write(data)
+                try:
+                    wav.flush()
+                except Exception:
+                    pass
                 buf.append(data)
                 acc += len(data)
                 if acc >= frames_per_chunk:
@@ -130,6 +135,22 @@ class LoopbackRecorder:
                     self.chunk_queue.put(chunk)
                     buf = []
                     acc = 0
+
+                # Si está en modo "Predeterminado de Windows" (""), detectar si el usuario
+                # cambió la salida en Windows (menú de volumen) sin desenchufar nada
+                if not self.cfg.device_name:
+                    try:
+                        current_default_id = str(sc.default_speaker().name)
+                        if current_default_id != active_spk_id:
+                            log.info(
+                                "Cambio de salida de audio en Windows: '%s' -> '%s'. Conmutando captura...",
+                                active_spk_id,
+                                current_default_id,
+                            )
+                            self._warn(f"Salida cambiada a '{current_default_id}'. Conmutando captura...")
+                            break  # Salir para reabrir con el nuevo dispositivo
+                    except Exception:
+                        pass
         return buf, acc
 
     def _record_loop(self) -> None:
@@ -146,6 +167,10 @@ class LoopbackRecorder:
             while not self._stop.is_set():
                 try:
                     buf, acc = self._record_session(wav, buf, acc, frames_per_chunk)
+                    if not self._stop.is_set():
+                        # Conmutación en caliente de salida de Windows: reconectar de inmediato
+                        time.sleep(0.1)
+                        continue
                     break  # salida limpia
                 except RuntimeError as e:
                     if not self.cfg.auto_recover or self._stop.is_set():

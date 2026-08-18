@@ -38,6 +38,14 @@ class SummariesView:
         self.files_list = ft.ListView(expand=True, spacing=5)
         self.title = ft.Text("Seleccioná un resumen", size=22, weight=ft.FontWeight.W_600)
         self.path_label = ft.Text("", color=colors.muted, size=12)
+        self.colors = colors
+        self.delete_button = ft.IconButton(
+            icon=ft.Icons.DELETE_OUTLINE,
+            icon_color=colors.warning,
+            tooltip="Eliminar este resumen",
+            visible=False,
+            on_click=lambda _e: self.confirm_delete(self.selected_file),
+        )
         self.markdown_view = ft.Markdown(
             "Elegí una materia y un archivo desde el explorador.",
             selectable=True,
@@ -63,8 +71,13 @@ class SummariesView:
         )
         reader = ft.Container(
             ft.Column([
-                self.title,
-                self.path_label,
+                ft.Row([
+                    ft.Column([
+                        self.title,
+                        self.path_label,
+                    ], expand=True, spacing=2),
+                    self.delete_button,
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                 ft.Divider(),
                 ft.ListView([self.markdown_view], expand=True),
             ]),
@@ -103,6 +116,12 @@ class SummariesView:
                         leading=ft.Icon(ft.Icons.DESCRIPTION_OUTLINED, size=20),
                         title=ft.Text(path.stem, max_lines=2),
                         subtitle=ft.Text(datetime.fromtimestamp(path.stat().st_mtime).strftime("%d/%m/%Y")),
+                        trailing=ft.IconButton(
+                            icon=ft.Icons.DELETE_OUTLINE,
+                            icon_size=18,
+                            tooltip="Eliminar resumen",
+                            on_click=lambda _e, p=path: self.confirm_delete(p),
+                        ),
                         data=path,
                         selected=path == self.selected_file,
                         on_click=self.select_file,
@@ -166,8 +185,10 @@ class SummariesView:
                 f"{self._subject_for(path)} / {self._year_for(path)} / summaries / {path.name}"
             )
             self.markdown_view.value = path.read_text(encoding="utf-8")
+            self.delete_button.visible = True
         except OSError as exc:
             self.markdown_view.value = "No se pudo abrir el resumen."
+            self.delete_button.visible = False
             notify(self.main_page, f"No se pudo leer {path.name}: {exc}", error=True)
 
     def select_file(self, e) -> None:
@@ -175,3 +196,59 @@ class SummariesView:
         query = (self.search.value or "").strip().casefold()
         self._rebuild_groups(self._matching_files(query), query)
         self.view.update()
+
+    def confirm_delete(self, path: Path | None) -> None:
+        if path is None or not path.exists():
+            return
+
+        def on_confirm(_e):
+            dialog.open = False
+            self.main_page.update()
+            self._delete_file(path)
+
+        def on_cancel(_e):
+            dialog.open = False
+            self.main_page.update()
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.WARNING_AMBER, color=self.colors.warning),
+                ft.Text("Eliminar resumen"),
+            ], spacing=8),
+            content=ft.Text(
+                f"¿Estás seguro de que querés eliminar el resumen '{path.name}'?\n"
+                "Esta acción no se puede deshacer.",
+                selectable=True,
+            ),
+            actions=[
+                ft.TextButton("Cancelar", on_click=on_cancel),
+                ft.FilledButton(
+                    "Eliminar",
+                    icon=ft.Icons.DELETE,
+                    style=ft.ButtonStyle(bgcolor=ft.Colors.RED_800, color=ft.Colors.WHITE),
+                    on_click=on_confirm,
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.main_page.open(dialog)
+
+    def _delete_file(self, path: Path) -> None:
+        try:
+            if path.exists():
+                path.unlink()
+            if self.selected_file == path:
+                self.selected_file = None
+                self.title.value = "Seleccioná un resumen"
+                self.path_label.value = ""
+                self.markdown_view.value = "Elegí una materia y un archivo desde el explorador."
+                self.delete_button.visible = False
+            self.all_files = find_summary_files()
+            query = (self.search.value or "").strip().casefold()
+            self._rebuild_groups(self._matching_files(query), query)
+            self.view.update()
+            notify(self.main_page, f"Resumen '{path.name}' eliminado correctamente.")
+        except Exception as exc:
+            notify(self.main_page, f"No se pudo eliminar el resumen: {exc}", error=True)
+

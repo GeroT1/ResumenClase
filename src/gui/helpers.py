@@ -14,11 +14,19 @@ def notify(
     error: bool = False,
     warning: bool = False,
 ) -> None:
+    def _copy_action(_e):
+        try:
+            page.set_clipboard(message)
+        except Exception:
+            pass
+
     page.show_dialog(
         ft.SnackBar(
-            content=ft.Text(message),
+            content=ft.Text(message, selectable=True),
             bgcolor=ft.Colors.RED_800 if error else ft.Colors.AMBER_800 if warning else None,
             show_close_icon=True,
+            action="Copiar" if (error or warning) else None,
+            on_action=_copy_action if (error or warning) else None,
         )
     )
 

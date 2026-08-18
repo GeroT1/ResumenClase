@@ -60,15 +60,21 @@ def _gpu_status() -> tuple[bool, str]:
 def _cuda_runtime_ready() -> bool:
     """CTranslate2 necesita al menos cuBLAS y cuDNN además del driver NVIDIA."""
     roots = [Path(item) for item in sys.path if item]
-    roots.append(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)))
+    if hasattr(sys, "_MEIPASS"):
+        roots.append(Path(sys._MEIPASS))
+        roots.append(Path(sys._MEIPASS) / "_internal")
+    if sys.executable:
+        exe_parent = Path(sys.executable).parent
+        roots.append(exe_parent)
+        roots.append(exe_parent / "_internal")
     patterns = (
         "nvidia/cublas/bin/cublas64_*.dll",
         "nvidia/cudnn/bin/cudnn64_*.dll",
         "cublas64_*.dll",
         "cudnn64_*.dll",
     )
-    has_cublas = any(any(root.glob(patterns[index])) for root in roots for index in (0, 2))
-    has_cudnn = any(any(root.glob(patterns[index])) for root in roots for index in (1, 3))
+    has_cublas = any(any(root.glob(patterns[index])) for root in roots if root.is_dir() for index in (0, 2))
+    has_cudnn = any(any(root.glob(patterns[index])) for root in roots if root.is_dir() for index in (1, 3))
     return has_cublas and has_cudnn
 
 
@@ -112,3 +118,12 @@ def diagnose(cfg: Config) -> SetupStatus:
         find_executable("ffmpeg"), find_executable("ollama"),
         ollama_running, ollama_models, claude_ready, claude_detail,
     )
+
+
+def is_setup_needed(cfg: Config, status: SetupStatus | None = None) -> bool:
+    """Determina si faltan componentes esenciales (modelo Whisper o Ollama con su modelo)."""
+    if status is None:
+        status = diagnose(cfg)
+    model_ready = bool(cfg.llm.model and cfg.llm.model in status.ollama_models)
+    return not (status.whisper_cached and status.ollama_running and model_ready)
+

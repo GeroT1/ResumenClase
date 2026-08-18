@@ -17,10 +17,22 @@ hiddenimports = []
 # Estos paquetes cargan módulos, datos o DLL de forma dinámica.
 for package in (
     "av",
+    "charset_normalizer",
     "ctranslate2",
     "faster_whisper",
     "flet_desktop",
+    "magika",
+    "mammoth",
+    "markdownify",
     "markitdown",
+    "nvidia.cublas",
+    "nvidia.cudnn",
+    "nvidia.cuda_nvrtc",
+    "onnxruntime",
+    "pdfminer",
+    "pdfplumber",
+    "pptx",
+    "pypdfium2",
     "soundcard",
     "soundfile",
 ):

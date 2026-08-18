@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
+
 log = logging.getLogger(__name__)
 
 from .audio import LoopbackRecorder, extract_audio_from_file
@@ -141,6 +143,18 @@ class LiveSession:
                 raise RuntimeError(f"Falló la captura de audio: {self.recorder.error}") from self.recorder.error
 
     def _transcribe_chunk(self, model, chunk) -> None:
+        max_amp = float(np.max(np.abs(chunk))) if len(chunk) > 0 else 0.0
+        if max_amp == 0.0:
+            self._consecutive_silent_chunks = getattr(self, "_consecutive_silent_chunks", 0) + 1
+            if self._consecutive_silent_chunks == 2:
+                dev = self.cfg.audio.device_name or "Predeterminado de Windows"
+                self.on_warning(
+                    f"No se detecta señal de audio en '{dev}'. "
+                    "Verificá que el sonido esté saliendo por ese dispositivo o elegí 'Predeterminado de Windows' en Ajustes."
+                )
+        else:
+            self._consecutive_silent_chunks = 0
+
         text, segs = transcribe_array(model, chunk, self.cfg.whisper)
         if text:
             self.all_text.append(text)
@@ -148,10 +162,12 @@ class LiveSession:
                 s["start"] += self.offset
                 s["end"] += self.offset
                 self.all_segs.append(s)
-        else:
-            mm, ss = int(self.offset // 60), int(self.offset % 60)
-            self.all_text.append(f"[--- corte de audio {mm:02d}:{ss:02d} ---]")
         self.offset += self.cfg.audio.chunk_seconds
+        try:
+            current_transcript = " ".join(self.all_text).strip()
+            _write_outputs(self.cfg, self.stem, current_transcript, self.all_segs, summary=None)
+        except Exception as exc:
+            log.warning("live[%s]: no se pudo auto-guardar transcripción parcial: %s", self.debug_id, exc)
         self.on_chunk(text, self.offset)
 
     def request_stop(self) -> None:
